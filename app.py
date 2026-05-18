@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
 import numpy as np
+import torch
+from transformers import BertTokenizer, BertForSequenceClassification
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG
@@ -157,28 +159,39 @@ div[data-testid="stSidebar"] {
 </style>
 """, unsafe_allow_html=True)
 
+
 # ─────────────────────────────────────────────
-# LOAD MODEL
+# LOAD BERT MODEL FROM HUGGING FACE
 # ─────────────────────────────────────────────
-MODEL_PATH      = "fake_news_model.pkl"
-VECTORIZER_PATH = "tfidf_vectorizer.pkl"
+HF_MODEL_PATH = "dvybs/fake-news-detector-bert"
+MAX_LENGTH    = 128
 
 @st.cache_resource
-def load_model():
-    if not os.path.exists(MODEL_PATH):
-        return None, None, "model_missing"
-    if not os.path.exists(VECTORIZER_PATH):
-        return None, None, "vectorizer_missing"
+def load_bert_model():
     try:
-        with open(MODEL_PATH, "rb") as f:
+        tokenizer = BertTokenizer.from_pretrained(HF_MODEL_PATH)
+        model     = BertForSequenceClassification.from_pretrained(HF_MODEL_PATH)
+        model.eval()
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model  = model.to(device)
+        return model, tokenizer, device, "ok"
+    except Exception as e:
+        return None, None, None, str(e)
+
+# ─────────────────────────────────────────────
+# LOAD TFIDF MODEL AS FALLBACK
+# ─────────────────────────────────────────────
+@st.cache_resource
+def load_tfidf_model():
+    try:
+        with open("fake_news_model.pkl", "rb") as f:
             model = pickle.load(f)
-        with open(VECTORIZER_PATH, "rb") as f:
+        with open("tfidf_vectorizer.pkl", "rb") as f:
             vectorizer = pickle.load(f)
         return model, vectorizer, "ok"
     except Exception as e:
         return None, None, str(e)
 
-model, vectorizer, status = load_model()
 
 # ─────────────────────────────────────────────
 # TEXT PREPROCESSING
@@ -196,10 +209,42 @@ def clean_text(text: str) -> str:
              if w not in stop_words and len(w) > 2]
     return " ".join(words)
 
+
 # ─────────────────────────────────────────────
-# PREDICTION
+# PREDICTION FUNCTIONS
 # ─────────────────────────────────────────────
-def predict_news(text: str):
+def predict_with_bert(text, model, tokenizer, device):
+    encoding = tokenizer(
+        str(text),
+        max_length     = MAX_LENGTH,
+        padding        = 'max_length',
+        truncation     = True,
+        return_tensors = 'pt'
+    )
+    with torch.no_grad():
+        outputs = model(
+            input_ids      = encoding['input_ids'].to(device),
+            attention_mask = encoding['attention_mask'].to(device)
+        )
+        probs = torch.softmax(outputs.logits, dim=1).cpu().numpy()[0]
+
+    pred      = int(np.argmax(probs))
+    verdict   = 'REAL' if pred == 1 else 'FAKE'
+    fake_prob = round(float(probs[0]) * 100, 1)
+    real_prob = round(float(probs[1]) * 100, 1)
+    confidence = real_prob if pred == 1 else fake_prob
+
+    return {
+        "verdict":      verdict,
+        "confidence":   confidence,
+        "fake_prob":    fake_prob,
+        "real_prob":    real_prob,
+        "top_keywords": [],
+        "model_used":   "BERT"
+    }
+
+
+def predict_with_tfidf(text, model, vectorizer):
     cleaned    = clean_text(text)
     vectorized = vectorizer.transform([cleaned])
     pred       = model.predict(vectorized)[0]
@@ -223,7 +268,30 @@ def predict_news(text: str):
         "fake_prob":    fake_prob,
         "real_prob":    real_prob,
         "top_keywords": top_keywords,
+        "model_used":   "TF-IDF"
     }
+
+
+# ─────────────────────────────────────────────
+# LOAD MODELS
+# ─────────────────────────────────────────────
+with st.spinner("Loading BERT model from Hugging Face... (first load may take 1-2 mins)"):
+    bert_model, bert_tokenizer, bert_device, bert_status = load_bert_model()
+
+tfidf_model, tfidf_vectorizer, tfidf_status = load_tfidf_model()
+
+# Determine which model to use
+use_bert  = bert_status == "ok"
+use_tfidf = tfidf_status == "ok"
+
+def predict_news(text):
+    if use_bert:
+        return predict_with_bert(text, bert_model, bert_tokenizer, bert_device)
+    elif use_tfidf:
+        return predict_with_tfidf(text, tfidf_model, tfidf_vectorizer)
+    else:
+        return None
+
 
 # ─────────────────────────────────────────────
 # SIDEBAR
@@ -233,33 +301,39 @@ with st.sidebar:
     st.markdown("---")
     page = st.radio("", ["Single Article", "Bulk Analysis", "About"], label_visibility="collapsed")
     st.markdown("---")
+
+    # Model status
+    if use_bert:
+        st.success("✅ BERT model loaded")
+    elif use_tfidf:
+        st.warning("⚠️ Using TF-IDF fallback")
+    else:
+        st.error("❌ No model found")
+
     st.markdown("""
     <div class="sidebar-info">
     <b style="color:#AAA;">How it works</b><br><br>
-    1. Your text is cleaned & preprocessed<br>
-    2. TF-IDF converts it to numbers<br>
-    3. A trained ML model classifies it<br>
+    1. Your text is analyzed by BERT<br>
+    2. BERT reads full context of text<br>
+    3. Model classifies as Real or Fake<br>
     4. Results shown with confidence score<br><br>
     <b style="color:#AAA;">Built with</b><br>
-    Python · scikit-learn · NLTK · Streamlit
+    Python · BERT · scikit-learn · Streamlit
     </div>
     """, unsafe_allow_html=True)
-    st.markdown("---")
-    if status == "ok":
-        st.success("✅ Model loaded")
-    else:
-        st.error("⚠️ Model not found")
+
 
 # ─────────────────────────────────────────────
 # HERO
 # ─────────────────────────────────────────────
 st.markdown('<div class="hero-title">Fake News<br>Detector</div>', unsafe_allow_html=True)
-st.markdown('<div class="hero-sub">Paste a headline or article — get an instant credibility verdict powered by ML.</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-sub">Paste a headline or article — get an instant credibility verdict powered by BERT.</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
-if status != "ok":
-    st.warning("Model files not found. Please ensure `fake_news_model.pkl` and `tfidf_vectorizer.pkl` are in the root folder.")
+if not use_bert and not use_tfidf:
+    st.error("No model available. Please check your setup.")
     st.stop()
+
 
 # ═════════════════════════════════════════════
 # PAGE 1: SINGLE ARTICLE
@@ -285,18 +359,18 @@ if page == "Single Article":
 
         article = st.text_area(
             "News article",
-            value=st.session_state.get("article_text", ""),
-            height=220,
-            placeholder="Paste a news headline or article excerpt here...",
-            label_visibility="collapsed"
+            value       = st.session_state.get("article_text", ""),
+            height      = 220,
+            placeholder = "Paste a news headline or article excerpt here...",
+            label_visibility = "collapsed"
         )
 
         analyze_btn = st.button("🔍 Analyze Article", use_container_width=True)
 
         st.markdown("""
         <div class="info-box">
-        ⚠️ This tool uses a statistical ML model. Always verify important
-        news with trusted sources like Reuters, AP, or BBC.
+        ⚠️ This tool uses BERT — a state of the art AI model.
+        Always verify important news with trusted sources like Reuters, AP, or BBC.
         </div>
         """, unsafe_allow_html=True)
 
@@ -307,63 +381,68 @@ if page == "Single Article":
             if not article.strip():
                 st.warning("Please enter some text first.")
             else:
-                with st.spinner("Analyzing..."):
+                with st.spinner("Analyzing with BERT..."):
                     result = predict_news(article)
 
-                verdict    = result["verdict"]
-                confidence = result["confidence"]
-                fake_prob  = result["fake_prob"]
-                real_prob  = result["real_prob"]
-                keywords   = result["top_keywords"]
-
-                if verdict == "FAKE":
-                    st.markdown('<div class="verdict-fake">🚨 &nbsp; FAKE NEWS</div>', unsafe_allow_html=True)
+                if result is None:
+                    st.error("Prediction failed. Please try again.")
                 else:
-                    st.markdown('<div class="verdict-real">✅ &nbsp; REAL NEWS</div>', unsafe_allow_html=True)
+                    verdict    = result["verdict"]
+                    confidence = result["confidence"]
+                    fake_prob  = result["fake_prob"]
+                    real_prob  = result["real_prob"]
+                    keywords   = result["top_keywords"]
+                    model_used = result["model_used"]
 
-                st.markdown("<br>", unsafe_allow_html=True)
+                    if verdict == "FAKE":
+                        st.markdown('<div class="verdict-fake">🚨 &nbsp; FAKE NEWS</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div class="verdict-real">✅ &nbsp; REAL NEWS</div>', unsafe_allow_html=True)
 
-                m1, m2, m3 = st.columns(3)
-                with m1:
-                    conf_display = f"{confidence:.1f}%" if confidence is not None else "N/A"
-                    st.markdown(f"""<div class="metric-card">
-                        <div class="metric-label">Confidence</div>
-                        <div class="metric-value">{conf_display}</div>
-                    </div>""", unsafe_allow_html=True)
-                with m2:
-                    fp = f"{fake_prob:.1f}%" if fake_prob is not None else "N/A"
-                    st.markdown(f"""<div class="metric-card">
-                        <div class="metric-label">Fake probability</div>
-                        <div class="metric-value" style="color:#FF8A8A">{fp}</div>
-                    </div>""", unsafe_allow_html=True)
-                with m3:
-                    rp = f"{real_prob:.1f}%" if real_prob is not None else "N/A"
-                    st.markdown(f"""<div class="metric-card">
-                        <div class="metric-label">Real probability</div>
-                        <div class="metric-value" style="color:#8AFF9A">{rp}</div>
-                    </div>""", unsafe_allow_html=True)
-
-                if fake_prob is not None:
+                    st.caption(f"Analyzed by: {model_used}")
                     st.markdown("<br>", unsafe_allow_html=True)
-                    fig, ax = plt.subplots(figsize=(5, 0.7))
-                    fig.patch.set_facecolor("#1A1A1A")
-                    ax.set_facecolor("#1A1A1A")
-                    ax.barh([""], [fake_prob], color="#E24B4A", height=0.5, label="Fake")
-                    ax.barh([""], [real_prob], left=[fake_prob], color="#639922", height=0.5, label="Real")
-                    ax.set_xlim(0, 100)
-                    ax.set_xticks([])
-                    ax.set_yticks([])
-                    for spine in ax.spines.values():
-                        spine.set_visible(False)
-                    ax.legend(loc="upper right", fontsize=7, framealpha=0,
-                              labelcolor="#AAA", handlelength=1)
-                    st.pyplot(fig, use_container_width=True)
-                    plt.close(fig)
 
-                if keywords:
-                    st.markdown("<br>**Top keywords detected:**", unsafe_allow_html=True)
-                    pills = " ".join([f'<span class="keyword-pill">{k}</span>' for k in keywords])
-                    st.markdown(pills, unsafe_allow_html=True)
+                    m1, m2, m3 = st.columns(3)
+                    with m1:
+                        conf_display = f"{confidence:.1f}%" if confidence is not None else "N/A"
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-label">Confidence</div>
+                            <div class="metric-value">{conf_display}</div>
+                        </div>""", unsafe_allow_html=True)
+                    with m2:
+                        fp = f"{fake_prob:.1f}%" if fake_prob is not None else "N/A"
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-label">Fake probability</div>
+                            <div class="metric-value" style="color:#FF8A8A">{fp}</div>
+                        </div>""", unsafe_allow_html=True)
+                    with m3:
+                        rp = f"{real_prob:.1f}%" if real_prob is not None else "N/A"
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-label">Real probability</div>
+                            <div class="metric-value" style="color:#8AFF9A">{rp}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                    if fake_prob is not None:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        fig, ax = plt.subplots(figsize=(5, 0.7))
+                        fig.patch.set_facecolor("#1A1A1A")
+                        ax.set_facecolor("#1A1A1A")
+                        ax.barh([""], [fake_prob], color="#E24B4A", height=0.5, label="Fake")
+                        ax.barh([""], [real_prob], left=[fake_prob], color="#639922", height=0.5, label="Real")
+                        ax.set_xlim(0, 100)
+                        ax.set_xticks([])
+                        ax.set_yticks([])
+                        for spine in ax.spines.values():
+                            spine.set_visible(False)
+                        ax.legend(loc="upper right", fontsize=7, framealpha=0,
+                                  labelcolor="#AAA", handlelength=1)
+                        st.pyplot(fig, use_container_width=True)
+                        plt.close(fig)
+
+                    if keywords:
+                        st.markdown("<br>**Top keywords detected:**", unsafe_allow_html=True)
+                        pills = " ".join([f'<span class="keyword-pill">{k}</span>' for k in keywords])
+                        st.markdown(pills, unsafe_allow_html=True)
         else:
             st.markdown("""
             <div style="background:#141414; border:1px dashed #2A2A2A; border-radius:12px;
@@ -375,6 +454,7 @@ if page == "Single Article":
             </div>
             """, unsafe_allow_html=True)
 
+
 # ═════════════════════════════════════════════
 # PAGE 2: BULK ANALYSIS
 # ═════════════════════════════════════════════
@@ -384,9 +464,9 @@ elif page == "Bulk Analysis":
 
     bulk_text = st.text_area(
         "Headlines",
-        height=200,
-        placeholder="Headline 1\nHeadline 2\nHeadline 3\n...",
-        label_visibility="collapsed"
+        height      = 200,
+        placeholder = "Headline 1\nHeadline 2\nHeadline 3\n...",
+        label_visibility = "collapsed"
     )
 
     if st.button("🔍 Analyze All", use_container_width=False):
@@ -394,17 +474,18 @@ elif page == "Bulk Analysis":
         if not lines:
             st.warning("Please enter at least one headline.")
         else:
-            with st.spinner(f"Analyzing {len(lines)} headlines..."):
+            with st.spinner(f"Analyzing {len(lines)} headlines with BERT..."):
                 rows = []
                 for line in lines:
                     r = predict_news(line)
-                    rows.append({
-                        "Headline":   line[:80] + ("..." if len(line) > 80 else ""),
-                        "Verdict":    r["verdict"],
-                        "Confidence": f"{r['confidence']:.1f}%" if r["confidence"] else "N/A",
-                        "Fake prob":  f"{r['fake_prob']:.1f}%" if r["fake_prob"] else "N/A",
-                        "Real prob":  f"{r['real_prob']:.1f}%" if r["real_prob"] else "N/A",
-                    })
+                    if r:
+                        rows.append({
+                            "Headline":   line[:80] + ("..." if len(line) > 80 else ""),
+                            "Verdict":    r["verdict"],
+                            "Confidence": f"{r['confidence']:.1f}%" if r["confidence"] else "N/A",
+                            "Fake prob":  f"{r['fake_prob']:.1f}%" if r["fake_prob"] else "N/A",
+                            "Real prob":  f"{r['real_prob']:.1f}%" if r["real_prob"] else "N/A",
+                        })
 
             results_df = pd.DataFrame(rows)
             fake_count = sum(1 for r in rows if r["Verdict"] == "FAKE")
@@ -433,15 +514,16 @@ elif page == "Bulk Analysis":
                 ax2.set_facecolor("#1A1A1A")
                 ax2.pie(
                     [fake_count, real_count],
-                    labels=["Fake", "Real"],
-                    colors=["#E24B4A", "#639922"],
-                    autopct="%1.0f%%",
-                    startangle=90,
-                    textprops={"color": "#F5F5F0", "fontsize": 12}
+                    labels     = ["Fake", "Real"],
+                    colors     = ["#E24B4A", "#639922"],
+                    autopct    = "%1.0f%%",
+                    startangle = 90,
+                    textprops  = {"color": "#F5F5F0", "fontsize": 12}
                 )
                 ax2.set_title("Breakdown", color="#F5F5F0", fontsize=13)
                 st.pyplot(fig2, use_container_width=False)
                 plt.close(fig2)
+
 
 # ═════════════════════════════════════════════
 # PAGE 3: ABOUT
@@ -459,11 +541,12 @@ elif page == "About":
     - Text cleaning: lowercase, URL removal, punctuation removal, stopword removal, stemming
     - Feature extraction: TF-IDF Vectorizer (5,000 features, bigrams)
     - Models trained: Logistic Regression, Passive Aggressive Classifier, Random Forest
-    - Best model saved and deployed
+    - BERT transformer fine-tuned for higher accuracy
+    - Best model deployed via Hugging Face
 
     **Tech stack**
-    - Python · scikit-learn · NLTK · pandas · NumPy
-    - Streamlit · Matplotlib · BERT (fine-tuned)
+    - Python · BERT · scikit-learn · NLTK · pandas · NumPy
+    - Streamlit · Matplotlib · Hugging Face
 
     **Limitations**
     - Trained primarily on English language news
@@ -479,7 +562,7 @@ elif page == "About":
             "Train ML model in Google Colab",
             "Build Streamlit web app",
             "Upgrade to BERT transformer model",
-            "Deploy app online (Streamlit Cloud)"
+            "Deploy app online with Hugging Face + Streamlit Cloud"
         ],
         "Status": ["✅ Done", "✅ Done", "✅ Done", "✅ Done"]
     })

@@ -120,6 +120,26 @@ h1, h2, h3 { font-family: 'Syne', sans-serif !important; }
     font-size: 0.85rem;
     margin-top: 1rem;
 }
+.model-badge-bert {
+    display: inline-block;
+    background: #1A2744;
+    border: 1px solid #2E4F8A;
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 0.8rem;
+    color: #7BA7E8;
+    margin-bottom: 0.5rem;
+}
+.model-badge-tfidf {
+    display: inline-block;
+    background: #1A2A1A;
+    border: 1px solid #3B6D11;
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 0.8rem;
+    color: #8AFF9A;
+    margin-bottom: 0.5rem;
+}
 .stTextArea textarea {
     background-color: #141414 !important;
     color: #F5F5F0 !important;
@@ -156,12 +176,19 @@ div[data-testid="stSidebar"] {
     background: linear-gradient(90deg, #2A2A2A, transparent);
     margin: 1.5rem 0;
 }
+.compare-box {
+    background: #141414;
+    border: 1px solid #2A2A2A;
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    margin-top: 0.5rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
-# LOAD BERT MODEL FROM HUGGING FACE
+# LOAD BERT MODEL
 # ─────────────────────────────────────────────
 HF_MODEL_PATH = "dvybs/fake-news-detector-bert"
 MAX_LENGTH    = 128
@@ -178,8 +205,9 @@ def load_bert_model():
     except Exception as e:
         return None, None, None, str(e)
 
+
 # ─────────────────────────────────────────────
-# LOAD TFIDF MODEL AS FALLBACK
+# LOAD TFIDF MODEL
 # ─────────────────────────────────────────────
 @st.cache_resource
 def load_tfidf_model():
@@ -228,10 +256,10 @@ def predict_with_bert(text, model, tokenizer, device):
         )
         probs = torch.softmax(outputs.logits, dim=1).cpu().numpy()[0]
 
-    pred      = int(np.argmax(probs))
-    verdict   = 'REAL' if pred == 1 else 'FAKE'
-    fake_prob = round(float(probs[0]) * 100, 1)
-    real_prob = round(float(probs[1]) * 100, 1)
+    pred       = int(np.argmax(probs))
+    verdict    = 'REAL' if pred == 1 else 'FAKE'
+    fake_prob  = round(float(probs[0]) * 100, 1)
+    real_prob  = round(float(probs[1]) * 100, 1)
     confidence = real_prob if pred == 1 else fake_prob
 
     return {
@@ -273,24 +301,14 @@ def predict_with_tfidf(text, model, vectorizer):
 
 
 # ─────────────────────────────────────────────
-# LOAD MODELS
+# LOAD BOTH MODELS AT STARTUP
 # ─────────────────────────────────────────────
-with st.spinner("Loading BERT model from Hugging Face... (first load may take 1-2 mins)"):
+with st.spinner("Loading models..."):
     bert_model, bert_tokenizer, bert_device, bert_status = load_bert_model()
+    tfidf_model, tfidf_vectorizer, tfidf_status = load_tfidf_model()
 
-tfidf_model, tfidf_vectorizer, tfidf_status = load_tfidf_model()
-
-# Determine which model to use
-use_bert  = bert_status == "ok"
-use_tfidf = tfidf_status == "ok"
-
-def predict_news(text):
-    if use_bert:
-        return predict_with_bert(text, bert_model, bert_tokenizer, bert_device)
-    elif use_tfidf:
-        return predict_with_tfidf(text, tfidf_model, tfidf_vectorizer)
-    else:
-        return None
+bert_available  = bert_status == "ok"
+tfidf_available = tfidf_status == "ok"
 
 
 # ─────────────────────────────────────────────
@@ -299,40 +317,150 @@ def predict_news(text):
 with st.sidebar:
     st.markdown("## 🔍 Fake News Detector")
     st.markdown("---")
-    page = st.radio("", ["Single Article", "Bulk Analysis", "About"], label_visibility="collapsed")
-    st.markdown("---")
 
-    # Model status
-    if use_bert:
-        st.success("✅ BERT model loaded")
-    elif use_tfidf:
-        st.warning("⚠️ Using TF-IDF fallback")
+    # ── MODEL SWITCHER ──
+    st.markdown("**🤖 Select Model**")
+
+    model_options = []
+    if bert_available:
+        model_options.append("BERT (Deep Learning)")
+    if tfidf_available:
+        model_options.append("TF-IDF (Machine Learning)")
+    if bert_available and tfidf_available:
+        model_options.append("Compare Both")
+
+    if not model_options:
+        st.error("No models available")
+        selected_model = None
     else:
-        st.error("❌ No model found")
+        selected_model = st.radio(
+            "Model",
+            model_options,
+            label_visibility="collapsed"
+        )
 
-    st.markdown("""
-    <div class="sidebar-info">
-    <b style="color:#AAA;">How it works</b><br><br>
-    1. Your text is analyzed by BERT<br>
-    2. BERT reads full context of text<br>
-    3. Model classifies as Real or Fake<br>
-    4. Results shown with confidence score<br><br>
-    <b style="color:#AAA;">Built with</b><br>
-    Python · BERT · scikit-learn · Streamlit
-    </div>
-    """, unsafe_allow_html=True)
+    # Model info cards
+    if selected_model == "BERT (Deep Learning)":
+        st.markdown("""
+        <div class="sidebar-info">
+        <b style="color:#7BA7E8;">BERT</b><br><br>
+        110M parameter transformer model.<br>
+        Understands full sentence context.<br>
+        Trained on 6,000 article subset.<br><br>
+        <b style="color:#AAA;">Accuracy:</b> ~99% on test set
+        </div>
+        """, unsafe_allow_html=True)
+    elif selected_model == "TF-IDF (Machine Learning)":
+        st.markdown("""
+        <div class="sidebar-info">
+        <b style="color:#8AFF9A;">TF-IDF</b><br><br>
+        Classic ML with word frequency features.<br>
+        Trained on full 44,000 articles.<br>
+        Faster and more reliable on diverse news.<br><br>
+        <b style="color:#AAA;">Accuracy:</b> ~95% on test set
+        </div>
+        """, unsafe_allow_html=True)
+    elif selected_model == "Compare Both":
+        st.markdown("""
+        <div class="sidebar-info">
+        <b style="color:#EF9F27;">Compare Mode</b><br><br>
+        Runs both models simultaneously.<br>
+        See how each model differs on the same article.<br><br>
+        Great for understanding model behavior.
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    page = st.radio("Navigation", ["Single Article", "Bulk Analysis", "About"], label_visibility="collapsed")
+
+    st.markdown("---")
+    # Status indicators
+    st.markdown("**Model Status**")
+    if bert_available:
+        st.success("✅ BERT loaded")
+    else:
+        st.error("❌ BERT unavailable")
+    if tfidf_available:
+        st.success("✅ TF-IDF loaded")
+    else:
+        st.error("❌ TF-IDF unavailable")
 
 
 # ─────────────────────────────────────────────
 # HERO
 # ─────────────────────────────────────────────
 st.markdown('<div class="hero-title">Fake News<br>Detector</div>', unsafe_allow_html=True)
-st.markdown('<div class="hero-sub">Paste a headline or article — get an instant credibility verdict powered by BERT.</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-sub">Paste a headline or article — get an instant credibility verdict. Switch models in the sidebar.</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
-if not use_bert and not use_tfidf:
-    st.error("No model available. Please check your setup.")
+if not bert_available and not tfidf_available:
+    st.error("No models available. Please check your setup.")
     st.stop()
+
+
+# ─────────────────────────────────────────────
+# RESULT RENDERER
+# ─────────────────────────────────────────────
+def render_result(result, label=""):
+    verdict    = result["verdict"]
+    confidence = result["confidence"]
+    fake_prob  = result["fake_prob"]
+    real_prob  = result["real_prob"]
+    keywords   = result["top_keywords"]
+    model_used = result["model_used"]
+
+    if label:
+        badge_class = "model-badge-bert" if model_used == "BERT" else "model-badge-tfidf"
+        st.markdown(f'<div class="{badge_class}">🤖 {model_used}</div>', unsafe_allow_html=True)
+
+    if verdict == "FAKE":
+        st.markdown('<div class="verdict-fake">🚨 &nbsp; FAKE NEWS</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="verdict-real">✅ &nbsp; REAL NEWS</div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        conf_display = f"{confidence:.1f}%" if confidence is not None else "N/A"
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Confidence</div>
+            <div class="metric-value">{conf_display}</div>
+        </div>""", unsafe_allow_html=True)
+    with m2:
+        fp = f"{fake_prob:.1f}%" if fake_prob is not None else "N/A"
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Fake probability</div>
+            <div class="metric-value" style="color:#FF8A8A">{fp}</div>
+        </div>""", unsafe_allow_html=True)
+    with m3:
+        rp = f"{real_prob:.1f}%" if real_prob is not None else "N/A"
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Real probability</div>
+            <div class="metric-value" style="color:#8AFF9A">{rp}</div>
+        </div>""", unsafe_allow_html=True)
+
+    if fake_prob is not None:
+        st.markdown("<br>", unsafe_allow_html=True)
+        fig, ax = plt.subplots(figsize=(5, 0.7))
+        fig.patch.set_facecolor("#1A1A1A")
+        ax.set_facecolor("#1A1A1A")
+        ax.barh([""], [fake_prob], color="#E24B4A", height=0.5, label="Fake")
+        ax.barh([""], [real_prob], left=[fake_prob], color="#639922", height=0.5, label="Real")
+        ax.set_xlim(0, 100)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.legend(loc="upper right", fontsize=7, framealpha=0,
+                  labelcolor="#AAA", handlelength=1)
+        st.pyplot(fig, use_container_width=True)
+        plt.close(fig)
+
+    if keywords:
+        st.markdown("<br>**Top keywords detected:**", unsafe_allow_html=True)
+        pills = " ".join([f'<span class="keyword-pill">{k}</span>' for k in keywords])
+        st.markdown(pills, unsafe_allow_html=True)
 
 
 # ═════════════════════════════════════════════
@@ -369,8 +497,7 @@ if page == "Single Article":
 
         st.markdown("""
         <div class="info-box">
-        ⚠️ This tool uses BERT — a state of the art AI model.
-        Always verify important news with trusted sources like Reuters, AP, or BBC.
+        ⚠️ Always verify important news with trusted sources like Reuters, AP, or BBC.
         </div>
         """, unsafe_allow_html=True)
 
@@ -380,69 +507,36 @@ if page == "Single Article":
         if analyze_btn:
             if not article.strip():
                 st.warning("Please enter some text first.")
-            else:
-                with st.spinner("Analyzing with BERT..."):
-                    result = predict_news(article)
 
-                if result is None:
-                    st.error("Prediction failed. Please try again.")
-                else:
-                    verdict    = result["verdict"]
-                    confidence = result["confidence"]
-                    fake_prob  = result["fake_prob"]
-                    real_prob  = result["real_prob"]
-                    keywords   = result["top_keywords"]
-                    model_used = result["model_used"]
-
-                    if verdict == "FAKE":
-                        st.markdown('<div class="verdict-fake">🚨 &nbsp; FAKE NEWS</div>', unsafe_allow_html=True)
+            # ── SINGLE MODEL MODE ──
+            elif selected_model in ["BERT (Deep Learning)", "TF-IDF (Machine Learning)"]:
+                with st.spinner(f"Analyzing with {selected_model}..."):
+                    if selected_model == "BERT (Deep Learning)":
+                        result = predict_with_bert(article, bert_model, bert_tokenizer, bert_device)
                     else:
-                        st.markdown('<div class="verdict-real">✅ &nbsp; REAL NEWS</div>', unsafe_allow_html=True)
+                        result = predict_with_tfidf(article, tfidf_model, tfidf_vectorizer)
+                render_result(result, label=selected_model)
 
-                    st.caption(f"Analyzed by: {model_used}")
-                    st.markdown("<br>", unsafe_allow_html=True)
+            # ── COMPARE BOTH MODE ──
+            elif selected_model == "Compare Both":
+                with st.spinner("Running both models..."):
+                    bert_result  = predict_with_bert(article, bert_model, bert_tokenizer, bert_device)
+                    tfidf_result = predict_with_tfidf(article, tfidf_model, tfidf_vectorizer)
 
-                    m1, m2, m3 = st.columns(3)
-                    with m1:
-                        conf_display = f"{confidence:.1f}%" if confidence is not None else "N/A"
-                        st.markdown(f"""<div class="metric-card">
-                            <div class="metric-label">Confidence</div>
-                            <div class="metric-value">{conf_display}</div>
-                        </div>""", unsafe_allow_html=True)
-                    with m2:
-                        fp = f"{fake_prob:.1f}%" if fake_prob is not None else "N/A"
-                        st.markdown(f"""<div class="metric-card">
-                            <div class="metric-label">Fake probability</div>
-                            <div class="metric-value" style="color:#FF8A8A">{fp}</div>
-                        </div>""", unsafe_allow_html=True)
-                    with m3:
-                        rp = f"{real_prob:.1f}%" if real_prob is not None else "N/A"
-                        st.markdown(f"""<div class="metric-card">
-                            <div class="metric-label">Real probability</div>
-                            <div class="metric-value" style="color:#8AFF9A">{rp}</div>
-                        </div>""", unsafe_allow_html=True)
+                st.markdown("#### 🤖 BERT Result")
+                render_result(bert_result, label="BERT")
 
-                    if fake_prob is not None:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        fig, ax = plt.subplots(figsize=(5, 0.7))
-                        fig.patch.set_facecolor("#1A1A1A")
-                        ax.set_facecolor("#1A1A1A")
-                        ax.barh([""], [fake_prob], color="#E24B4A", height=0.5, label="Fake")
-                        ax.barh([""], [real_prob], left=[fake_prob], color="#639922", height=0.5, label="Real")
-                        ax.set_xlim(0, 100)
-                        ax.set_xticks([])
-                        ax.set_yticks([])
-                        for spine in ax.spines.values():
-                            spine.set_visible(False)
-                        ax.legend(loc="upper right", fontsize=7, framealpha=0,
-                                  labelcolor="#AAA", handlelength=1)
-                        st.pyplot(fig, use_container_width=True)
-                        plt.close(fig)
+                st.markdown("---")
+                st.markdown("#### 📊 TF-IDF Result")
+                render_result(tfidf_result, label="TF-IDF")
 
-                    if keywords:
-                        st.markdown("<br>**Top keywords detected:**", unsafe_allow_html=True)
-                        pills = " ".join([f'<span class="keyword-pill">{k}</span>' for k in keywords])
-                        st.markdown(pills, unsafe_allow_html=True)
+                # Agreement indicator
+                st.markdown("---")
+                if bert_result["verdict"] == tfidf_result["verdict"]:
+                    st.success(f"✅ Both models agree — **{bert_result['verdict']}**")
+                else:
+                    st.warning(f"⚠️ Models disagree — BERT says **{bert_result['verdict']}**, TF-IDF says **{tfidf_result['verdict']}**")
+
         else:
             st.markdown("""
             <div style="background:#141414; border:1px dashed #2A2A2A; border-radius:12px;
@@ -474,10 +568,18 @@ elif page == "Bulk Analysis":
         if not lines:
             st.warning("Please enter at least one headline.")
         else:
-            with st.spinner(f"Analyzing {len(lines)} headlines with BERT..."):
+            with st.spinner(f"Analyzing {len(lines)} headlines..."):
                 rows = []
                 for line in lines:
-                    r = predict_news(line)
+                    if selected_model == "BERT (Deep Learning)" and bert_available:
+                        r = predict_with_bert(line, bert_model, bert_tokenizer, bert_device)
+                    elif selected_model == "TF-IDF (Machine Learning)" and tfidf_available:
+                        r = predict_with_tfidf(line, tfidf_model, tfidf_vectorizer)
+                    elif selected_model == "Compare Both":
+                        r = predict_with_tfidf(line, tfidf_model, tfidf_vectorizer)
+                    else:
+                        r = predict_with_tfidf(line, tfidf_model, tfidf_vectorizer)
+
                     if r:
                         rows.append({
                             "Headline":   line[:80] + ("..." if len(line) > 80 else ""),
@@ -485,6 +587,7 @@ elif page == "Bulk Analysis":
                             "Confidence": f"{r['confidence']:.1f}%" if r["confidence"] else "N/A",
                             "Fake prob":  f"{r['fake_prob']:.1f}%" if r["fake_prob"] else "N/A",
                             "Real prob":  f"{r['real_prob']:.1f}%" if r["real_prob"] else "N/A",
+                            "Model":      r["model_used"],
                         })
 
             results_df = pd.DataFrame(rows)
@@ -537,22 +640,32 @@ elif page == "About":
     [Fake and Real News Dataset](https://www.kaggle.com/datasets/clmentbisaillon/fake-and-real-news-dataset)
     — ~44,000 articles labeled as Fake or Real.
 
-    **Pipeline**
-    - Text cleaning: lowercase, URL removal, punctuation removal, stopword removal, stemming
-    - Feature extraction: TF-IDF Vectorizer (5,000 features, bigrams)
-    - Models trained: Logistic Regression, Passive Aggressive Classifier, Random Forest
-    - BERT transformer fine-tuned for higher accuracy
-    - Best model deployed via Hugging Face
+    **Models Available**
+    - **TF-IDF + ML** — trained on full 44,000 articles, fast and reliable
+    - **BERT** — 110M parameter transformer, fine-tuned on 6,000 articles, deep contextual understanding
+    - **Compare Mode** — run both models simultaneously and see where they agree or disagree
 
-    **Tech stack**
-    - Python · BERT · scikit-learn · NLTK · pandas · NumPy
-    - Streamlit · Matplotlib · Hugging Face
+    **Key Finding**
+    Training data size significantly impacts model performance regardless of model complexity.
+    The TF-IDF model trained on more data often outperforms BERT trained on a smaller subset.
+
+    **Tech Stack**
+    Python · BERT · scikit-learn · NLTK · Streamlit · Hugging Face · GitHub
 
     **Limitations**
     - Trained primarily on English language news
     - Does not browse the internet or fact-check in real time
     - Always verify important claims with authoritative sources
     """)
+
+    st.markdown("---")
+    st.markdown("**Model Comparison**")
+    comparison = pd.DataFrame({
+        "Feature":   ["Training data", "Accuracy", "Speed", "Context understanding", "Global news"],
+        "TF-IDF":    ["44,000 articles", "~95%", "⚡ Fast", "❌ Limited", "⚠️ Partial"],
+        "BERT":      ["6,000 articles", "~99%", "🐢 Slower", "✅ Full", "⚠️ Partial"],
+    })
+    st.dataframe(comparison, use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("**Project Roadmap**")

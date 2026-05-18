@@ -1,0 +1,12 @@
+[ui]
+hideSidebarNav = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"
+
+[client]
+showSidebarNavigation = true
+toolbarMode = "minimal"

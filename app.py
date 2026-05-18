@@ -424,7 +424,7 @@ elif page == "Bulk Analysis":
                     return "background-color: #0B1F0D; color: #B3FFBE; font-weight: bold;"
                 return ""
 
-            styled = results_df.style.applymap(style_verdict, subset=["Verdict"])
+            styled = results_df.style.map(style_verdict, subset=["Verdict"])
             st.dataframe(styled, use_container_width=True, hide_index=True)
 
             if len(rows) > 1:

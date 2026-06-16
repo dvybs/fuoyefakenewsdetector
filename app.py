@@ -472,18 +472,35 @@ if page == "Single Article":
     with col_input:
         st.markdown("#### Paste your article")
 
-        examples = {
-            "fake": "SHOCKING: Scientists prove that 5G towers are spreading a new virus. Government officials are hiding this truth from the public and mainstream media is complicit in the cover-up!",
-            "real": "The Federal Reserve raised its benchmark interest rate by a quarter percentage point on Wednesday, the tenth increase since early last year, as officials try to cool the economy and bring inflation back to their 2% target.",
-        }
+        import random
+
+        fake_examples = [
+            "SHOCKING: Scientists prove that 5G towers are spreading a new virus. Government officials are hiding this truth from the public and mainstream media is complicit in the cover-up!",
+            "BREAKING: NASA confirms alien spaceship has been spotted near Jupiter. World governments are on high alert and the United Nations has called an emergency secret meeting to discuss the findings.",
+            "EXPOSED: The government has been secretly adding mind-control chemicals to tap water for decades. Whistleblower leaks documents proving the global conspiracy to control the population.",
+            "MIRACLE CURE: Doctors confirm that drinking lemon water every morning completely cures cancer. Big Pharma has been hiding this simple remedy for years to protect their profits.",
+            "URGENT: New study proves that mobile phones cause instant brain damage after just 10 minutes of use. Scientists urge everyone to throw away their phones immediately.",
+            "CONFIRMED: Bill Gates has microchips inside COVID-19 vaccines to track every human being on the planet. Government insiders have leaked the proof that mainstream media refuses to show.",
+            "DEEP STATE EXPOSED: Secret society of elite politicians has been running the world from underground bunkers. Anonymous source reveals shocking truth about world leaders.",
+        ]
+
+        real_examples = [
+            "The Federal Reserve raised its benchmark interest rate by a quarter percentage point on Wednesday, the tenth increase since early last year, as officials try to cool the economy and bring inflation back to their 2% target.",
+            "Apple Inc. reported record quarterly revenue of $89.5 billion on Thursday, driven by strong iPhone sales and continued growth in its services division, which includes the App Store, Apple Music, and iCloud.",
+            "The United Nations Security Council met on Tuesday to discuss the ongoing humanitarian crisis, with member states calling for an immediate ceasefire and the delivery of aid to affected civilian populations.",
+            "Scientists at Johns Hopkins University have published findings in the journal Nature showing that a newly developed mRNA vaccine demonstrated 94% efficacy in clinical trials involving 30,000 participants across multiple countries.",
+            "Nigeria's central bank held its benchmark interest rate steady at 18.75% on Tuesday, citing the need to balance inflation control with economic growth, according to a statement from the monetary policy committee.",
+            "The World Health Organization announced on Monday that global malaria cases declined by 12% in 2023 compared to the previous year, crediting expanded access to insecticide-treated bed nets and antimalarial drugs.",
+            "Tesla reported better-than-expected earnings for the third quarter, with net income rising 17% year-on-year to $2.3 billion, as vehicle deliveries reached a new record of 435,000 units globally.",
+        ]
 
         ecol1, ecol2 = st.columns(2)
         with ecol1:
             if st.button("🔴 Load fake example"):
-                st.session_state["article_text"] = examples["fake"]
+                st.session_state["article_text"] = random.choice(fake_examples)
         with ecol2:
             if st.button("🟢 Load real example"):
-                st.session_state["article_text"] = examples["real"]
+                st.session_state["article_text"] = random.choice(real_examples)
 
         article = st.text_area(
             "News article",

@@ -494,20 +494,34 @@ if page == "Single Article":
             "Tesla reported better-than-expected earnings for the third quarter, with net income rising 17% year-on-year to $2.3 billion, as vehicle deliveries reached a new record of 435,000 units globally.",
         ]
 
+        # ── Initialise session state keys ──
+        if "article_text" not in st.session_state:
+            st.session_state["article_text"] = ""
+        if "fake_idx" not in st.session_state:
+            st.session_state["fake_idx"] = 0
+        if "real_idx" not in st.session_state:
+            st.session_state["real_idx"] = 0
+
         ecol1, ecol2 = st.columns(2)
         with ecol1:
             if st.button("🔴 Load fake example"):
-                st.session_state["article_text"] = random.choice(fake_examples)
+                # Pick a different example each time by cycling through the list
+                idx = st.session_state["fake_idx"] % len(fake_examples)
+                st.session_state["article_text"] = fake_examples[idx]
+                st.session_state["fake_idx"] += 1
         with ecol2:
             if st.button("🟢 Load real example"):
-                st.session_state["article_text"] = random.choice(real_examples)
+                idx = st.session_state["real_idx"] % len(real_examples)
+                st.session_state["article_text"] = real_examples[idx]
+                st.session_state["real_idx"] += 1
 
         article = st.text_area(
             "News article",
-            value       = st.session_state.get("article_text", ""),
+            value       = st.session_state["article_text"],
             height      = 220,
             placeholder = "Paste a news headline or article excerpt here...",
-            label_visibility = "collapsed"
+            label_visibility = "collapsed",
+            key         = "article_input"
         )
 
         analyze_btn = st.button("🔍 Analyze Article", use_container_width=True)

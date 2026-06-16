@@ -494,35 +494,41 @@ if page == "Single Article":
             "Tesla reported better-than-expected earnings for the third quarter, with net income rising 17% year-on-year to $2.3 billion, as vehicle deliveries reached a new record of 435,000 units globally.",
         ]
 
-        # ── Initialise session state keys ──
+        # ── Initialise session state ──
         if "fake_idx" not in st.session_state:
             st.session_state["fake_idx"] = 0
         if "real_idx" not in st.session_state:
             st.session_state["real_idx"] = 0
-        if "article_input" not in st.session_state:
-            st.session_state["article_input"] = ""
+        if "loaded_text" not in st.session_state:
+            st.session_state["loaded_text"] = ""
+        if "textarea_version" not in st.session_state:
+            st.session_state["textarea_version"] = 0
 
         ecol1, ecol2 = st.columns(2)
         with ecol1:
             if st.button("🔴 Load fake example"):
                 idx = st.session_state["fake_idx"] % len(fake_examples)
-                st.session_state["article_input"] = fake_examples[idx]
+                st.session_state["loaded_text"] = fake_examples[idx]
                 st.session_state["fake_idx"] += 1
+                st.session_state["textarea_version"] += 1
                 st.rerun()
         with ecol2:
             if st.button("🟢 Load real example"):
                 idx = st.session_state["real_idx"] % len(real_examples)
-                st.session_state["article_input"] = real_examples[idx]
+                st.session_state["loaded_text"] = real_examples[idx]
                 st.session_state["real_idx"] += 1
+                st.session_state["textarea_version"] += 1
                 st.rerun()
 
-        # Bind text area directly to session state key — no value parameter
+        # Dynamic key forces Streamlit to recreate the text area fresh
+        # on every button click so value= is always respected
         article = st.text_area(
             "News article",
+            value            = st.session_state["loaded_text"],
             height           = 220,
             placeholder      = "Paste a news headline or article excerpt here...",
             label_visibility = "collapsed",
-            key              = "article_input"
+            key              = f"article_input_{st.session_state['textarea_version']}"
         )
 
         analyze_btn = st.button("🔍 Analyze Article", use_container_width=True)

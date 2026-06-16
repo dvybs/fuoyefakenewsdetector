@@ -508,11 +508,13 @@ if page == "Single Article":
                 idx = st.session_state["fake_idx"] % len(fake_examples)
                 st.session_state["article_input"] = fake_examples[idx]
                 st.session_state["fake_idx"] += 1
+                st.rerun()
         with ecol2:
             if st.button("🟢 Load real example"):
                 idx = st.session_state["real_idx"] % len(real_examples)
                 st.session_state["article_input"] = real_examples[idx]
                 st.session_state["real_idx"] += 1
+                st.rerun()
 
         # Bind text area directly to session state key — no value parameter
         article = st.text_area(

@@ -495,33 +495,32 @@ if page == "Single Article":
         ]
 
         # ── Initialise session state keys ──
-        if "article_text" not in st.session_state:
-            st.session_state["article_text"] = ""
         if "fake_idx" not in st.session_state:
             st.session_state["fake_idx"] = 0
         if "real_idx" not in st.session_state:
             st.session_state["real_idx"] = 0
+        if "article_input" not in st.session_state:
+            st.session_state["article_input"] = ""
 
         ecol1, ecol2 = st.columns(2)
         with ecol1:
             if st.button("🔴 Load fake example"):
-                # Pick a different example each time by cycling through the list
                 idx = st.session_state["fake_idx"] % len(fake_examples)
-                st.session_state["article_text"] = fake_examples[idx]
+                st.session_state["article_input"] = fake_examples[idx]
                 st.session_state["fake_idx"] += 1
         with ecol2:
             if st.button("🟢 Load real example"):
                 idx = st.session_state["real_idx"] % len(real_examples)
-                st.session_state["article_text"] = real_examples[idx]
+                st.session_state["article_input"] = real_examples[idx]
                 st.session_state["real_idx"] += 1
 
+        # Bind text area directly to session state key — no value parameter
         article = st.text_area(
             "News article",
-            value       = st.session_state["article_text"],
-            height      = 220,
-            placeholder = "Paste a news headline or article excerpt here...",
+            height           = 220,
+            placeholder      = "Paste a news headline or article excerpt here...",
             label_visibility = "collapsed",
-            key         = "article_input"
+            key              = "article_input"
         )
 
         analyze_btn = st.button("🔍 Analyze Article", use_container_width=True)
